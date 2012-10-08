@@ -28,6 +28,9 @@ libwapcaplet.a: $(C_OBJS)
 libwapcaplet.dummy: libwapcaplet.a
 	touch $@
 
+.PHONY: check
+check:
+
 .PHONY: clean
 clean:
 	rm -f *.so *.dylib *.dll *.dummy src/*.o
