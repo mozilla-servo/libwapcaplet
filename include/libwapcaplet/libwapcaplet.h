@@ -17,6 +17,10 @@ extern "C"
 #include <sys/types.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <pthread.h>
+
+extern void rust_lwc_lock();
+extern void rust_lwc_unlock();
 
 /**
  * The type of a reference counter used in libwapcaplet.
@@ -121,7 +125,7 @@ extern lwc_error lwc_intern_substring(lwc_string *str,
  * @note Use this if copying the string and intending both sides to retain
  * ownership.
  */
-#define lwc_string_ref(str) ({lwc_string *__lwc_s = (str); __lwc_s->refcnt++; __lwc_s;})
+#define lwc_string_ref(str) ({lwc_string *__lwc_s = (str); rust_lwc_lock(); __lwc_s->refcnt++; rust_lwc_unlock(); __lwc_s;})
 
 /**
  * Release a reference on an lwc_string.
@@ -136,10 +140,12 @@ extern lwc_error lwc_intern_substring(lwc_string *str,
  */
 #define lwc_string_unref(str) {						\
 		lwc_string *__lwc_s = (str);					\
-		__lwc_s->refcnt--;						\
+		rust_lwc_lock(); \
+		__lwc_s->refcnt--;	\
 		if ((__lwc_s->refcnt == 0) ||					\
 		    ((__lwc_s->refcnt == 1) && (__lwc_s->insensitive == __lwc_s)))	\
 			lwc_string_destroy(__lwc_s);				\
+		rust_lwc_unlock(); \
 	}
 	
 /**
@@ -178,6 +184,7 @@ extern void lwc_string_destroy(lwc_string *str);
 			lwc_string *__lwc_str2 = (_str2);		\
 			bool *__lwc_ret = (_ret);			\
 								\
+			rust_lwc_lock(); \
 			if (__lwc_str1->insensitive == NULL) {		\
 				__lwc_err = lwc__intern_caseless_string(__lwc_str1); \
 			}						\
@@ -186,6 +193,7 @@ extern void lwc_string_destroy(lwc_string *str);
 			}						\
 			if (__lwc_err == lwc_error_ok)			\
 				*__lwc_ret = (__lwc_str1->insensitive == __lwc_str2->insensitive); \
+			rust_lwc_unlock(); \
 			__lwc_err;						\
 		})
 	

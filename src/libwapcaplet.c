@@ -12,6 +12,18 @@
 
 #include "libwapcaplet/libwapcaplet.h"
 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void rust_lwc_lock() {
+        int res = pthread_mutex_lock(&mutex);
+        assert(res == 0);
+}
+
+void rust_lwc_unlock() {
+        int res = pthread_mutex_unlock(&mutex);
+        assert(res == 0);
+}
+
 #ifndef UNUSED
 #define UNUSED(x) ((x) = (x))
 #endif
@@ -91,7 +103,7 @@ lwc__intern(const char *s, size_t slen,
         
         assert((s != NULL) || (slen == 0));
         assert(ret);
-        
+
         if (ctx == NULL) {
                 eret = lwc__initialise();
                 if (eret != lwc_error_ok)
@@ -134,7 +146,7 @@ lwc__intern(const char *s, size_t slen,
 
         /* Guarantee NUL termination */
         STR_OF(str)[slen] = '\0';
-        
+
         return lwc_error_ok;
 }
 
@@ -142,9 +154,12 @@ lwc_error
 lwc_intern_string(const char *s, size_t slen,
                   lwc_string **ret)
 {
-        return lwc__intern(s, slen, ret,
+        rust_lwc_lock();
+        lwc_error e = lwc__intern(s, slen, ret,
                            lwc__calculate_hash,
                            strncmp, (lwc_memcpy)memcpy);
+        rust_lwc_unlock();
+        return e;
 }
 
 lwc_error
@@ -167,14 +182,17 @@ void
 lwc_string_destroy(lwc_string *str)
 {
         assert(str);
-        
+
         *(str->prevptr) = str->next;
         
         if (str->next != NULL)
                 str->next->prevptr = str->prevptr;
 
-        if (str->insensitive != NULL && str->refcnt == 0)
+        if (str->insensitive != NULL && str->refcnt == 0) {
+                rust_lwc_unlock();
                 lwc_string_unref(str->insensitive);
+                rust_lwc_lock();
+	}
 
 #ifndef NDEBUG
         memset(str, 0xA5, sizeof(*str) + str->len);
@@ -247,12 +265,16 @@ lwc_iterate_strings(lwc_iteration_callback_fn cb, void *pw)
 {
         lwc_hash n;
         lwc_string *str;
-       
+
+	rust_lwc_lock();
 	if (ctx == NULL)
+		rust_lwc_unlock();
 		return;
  
         for (n = 0; n < ctx->bucketcount; ++n) {
                 for (str = ctx->buckets[n]; str != NULL; str = str->next)
                         cb(str, pw);
         }
+
+	rust_lwc_unlock();
 }
